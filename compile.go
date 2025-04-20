@@ -1,4 +1,8 @@
-package main
+package g_machine
+
+import (
+	. "github.com/goghcrow/g_machine/lang"
+)
 
 // 在一个超组合子编译出的指令序列执行前，栈内一定已经存在这样一些地址：
 //	最顶部的地址指向一个NGlobal节点(超组合子本身)
@@ -11,27 +15,21 @@ package main
 //		Unwind寻找redex开始下一次规约
 
 // CompileSC Compile Super Combinator
+// 这里需要跟 Unwind(Global) 代码配合
 func CompileSC(s TSC) ScDef {
 	env := MkEnv()
 	for i, arg := range s.Args {
 		env = env.Ext(Name(arg), i)
 	}
 	arity := len(s.Args)
-
-	return ScDef{
-		Name:  s.Name,
-		Arity: len(s.Args),
-		Code:  compileR(s.Body, env, arity),
-	}
-}
-
-// todo 合并到 compileSC中
-func compileR(t Term, env Env, arity int) Code {
+	var body Code
 	if arity == 0 {
 		// 指令Pop 0实际上什么也没做，故 arity == 0 时不生成
-		return append(compileC(t, env), Update(arity), Unwind{})
+		body = append(compileC(s.Body, env), Update(arity), IUnwind)
+	} else {
+		body = append(compileC(s.Body, env), Update(arity), Pop(arity), IUnwind)
 	}
-	return append(compileC(t, env), Update(arity), Pop(arity), Unwind{})
+	return ScDef{Name: s.Name, Arity: arity, Code: body}
 }
 
 func compileC(t Term, env Env) Code {
@@ -51,11 +49,13 @@ func compileC(t Term, env Env) Code {
 	case TCtor:
 		ctor := ResolveCtor(t.Tag)
 		return []Instr{Pack{Tag: ctor.Tag, Arity: ctor.Arity}}
+	case TMatch:
+		return compileE(t, env)
 	case TApp:
 		return MatchTerms[Code](t, []MatchAlts[Code]{
 			{
-				// Nil 不是 App, 这里只处理 (cons ...)
-				Apps(ResolveCtor(TagCons), P.Var("x"), P.Var("xs")),
+				// Nil 不是 App, 这里只处理 (Cons ...)
+				Apps(ResolveCtor(TagCons), TP.Slot("x"), TP.Slot("xs")),
 				func(t Term, binds Binds) Code {
 					ctor := ResolveCtor(TagCons)
 					return append(
@@ -68,7 +68,7 @@ func compileC(t Term, env Env) Code {
 				},
 			},
 			{
-				Ptn: P.Var("_"),
+				Ptn: TP.Slot("_"),
 				Fn: func(_ Term, binds Binds) Code {
 					// 对于函数应用，先编译右侧表达式，然后将环境中所有参数对应的偏移量加一
 					//（因为栈顶多出了一个地址指向实例化之后的右侧表达式），再编译左侧，最后加上MkApp指令
@@ -173,10 +173,29 @@ func compileE(t Term, env Env) Code {
 		//return []Instr{
 		//	Pack{Tag: ctor.Tag, Arity: ctor.Arity},
 		//}
+	case TMatch:
+		return MatchTerms[Code](t, []MatchAlts[Code]{
+			{
+				Match(TP.Slot("e"), nil /*wildcard*/),
+				func(t Term, binds Binds) Code {
+					// 由于 case 表达式匹配的对象需要被求值到 WHNF，因此只能通过 compileE 函数来编译它
+					return append(
+						compileE(binds["e"], env),
+						compileAlts(t.(TMatch).Alts, env),
+					)
+				},
+			},
+			{
+				Ptn: TP.Slot("_"),
+				Fn: func(t Term, binds Binds) Code {
+					return compileC(t, env)
+				},
+			},
+		})
 	case TApp:
 		return MatchTerms[Code](t, []MatchAlts[Code]{
 			{
-				Apps(Var("if"), P.Var("cond"), P.Var("then"), P.Var("else")),
+				Apps(Var("if"), TP.Slot("cond"), TP.Slot("then"), TP.Slot("else")),
 				func(t Term, binds Binds) Code {
 					return append(
 						compileE(binds["cond"], env),
@@ -188,13 +207,13 @@ func compileE(t Term, env Env) Code {
 				},
 			},
 			{
-				App(Var("negate"), P.Var("e")),
+				App(Var("negate"), TP.Slot("e")),
 				func(t Term, binds Binds) Code {
 					return append(compileE(binds["e"], env), INeg)
 				},
 			},
 			{
-				Apps(P.Var("op").Where(isBuiltin), P.Var("lhs"), P.Var("rhs")),
+				Apps(TP.Slot("op", isBuiltin), TP.Slot("lhs"), TP.Slot("rhs")),
 				func(t Term, binds Binds) Code {
 					code := builtinOps[Name(binds["op"].(TVar))]
 					return append(
@@ -206,20 +225,21 @@ func compileE(t Term, env Env) Code {
 					)
 				},
 			},
-			{
-				Case(P.Var("e"), nil /*wildcard*/),
-				func(t Term, binds Binds) Code {
-					// 由于 case 表达式匹配的对象需要被求值到 WHNF，因此只能通过 compileE 函数来编译它
-					return append(
-						compileE(binds["e"], env),
-						compileAlts(t.(TCase).Alts, env),
-					)
-				},
-			},
+			// 已经处理成了 TMatch, 不是 TAPPs
+			//{
+			//	Match(TP.Slot("e"), nil /*wildcard*/),
+			//	func(t Term, binds Binds) Code {
+			//		// 由于 case 表达式匹配的对象需要被求值到 WHNF，因此只能通过 compileE 函数来编译它
+			//		return append(
+			//			compileE(binds["e"], env),
+			//			compileAlts(t.(TMatch).Alts, env),
+			//		)
+			//	},
+			//},
 			// 这里应该不需要, 路由到 compileC
 			//{
 			//	// Nil 不是 App, 这里只处理 (cons ...)
-			//	Apps(builtinConstructors["Cons"], P.Var("x"), P.Var("xs")),
+			//	Apps(builtinConstructors["Cons"], TP.Slot("x"), TP.Slot("xs")),
 			//	func(t Term, binds Binds) Code {
 			//		consCtor := builtinConstructors["Cons"]
 			//		return append(
@@ -232,7 +252,7 @@ func compileE(t Term, env Env) Code {
 			//	},
 			//},
 			{
-				Ptn: P.Var("_"),
+				Ptn: TP.Slot("_"),
 				Fn: func(t Term, binds Binds) Code {
 					return compileC(t, env)
 				},

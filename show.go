@@ -1,37 +1,38 @@
-package main
+package g_machine
 
 import (
 	"strings"
+
+	. "github.com/goghcrow/g_machine/lang"
+	"github.com/goghcrow/go-ansi"
 )
 
 func (s *State) showAddr(addr Addr) string {
 	return s.showNode(s.Read(addr))
 }
 
-func (s *State) showPC() string {
-	if len(s.Code) == 0 {
-		return ""
-	}
-	in := s.Code[0]
-	if _, ok := in.(Unwind); ok {
-		return Fmt("%s(%s)", in, s.showAddr(s.peek()))
-	} else {
-		return Fmt("%s", in)
-	}
-}
 func (s *State) showCode() string {
-	return "[" + strings.Join(SliceMap(s.Code, Instr.String), ",") + "]"
+	switch len(s.Code) {
+	case 0:
+		return ""
+	case 1:
+		car := s.Code[0].String()
+		return ansi.Blue.Bold().Text(car).S()
+	default:
+		car, cdr := s.Code[0].String(), strings.Join(SliceMap(s.Code[1:], Instr.String), ", ")
+		return ansi.Blue.Bold().Text(car).S() + ansi.Yellow.Text(", "+cdr).S()
+	}
 }
 
 func (s *State) showStack() string {
-	buf := "Stack"
+	buf := ansi.Purple.Bold().Text("Stack").S()
 	for _, addr := range s.Stack.V {
 		buf += "\n\t" + s.showAddr(addr)
 	}
 	return buf
 }
 
-func (s *State) showNode(n Node) string {
+func (s *State) showNode(n GNode) string {
 	switch n := n.(type) {
 	case NNum:
 		return Fmt("Num(%d)", n)

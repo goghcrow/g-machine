@@ -1,4 +1,8 @@
-package main
+package g_machine
+
+import (
+	. "github.com/goghcrow/g_machine/lang"
+)
 
 type ScDef struct {
 	Name
@@ -6,7 +10,8 @@ type ScDef struct {
 	Code
 }
 
-type Node interface{ isNode() } // sealed
+// GNode 代表 Graph Node
+type GNode interface{ isNode() } // sealed
 
 type (
 	NNum    int

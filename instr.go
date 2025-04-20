@@ -1,8 +1,10 @@
-package main
+package g_machine
 
 import (
 	"fmt"
 	"strings"
+
+	. "github.com/goghcrow/g_machine/lang"
 )
 
 type Code = []Instr

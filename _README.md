@@ -21,3 +21,11 @@ coreF里的超组合子会被编译成一系列G-Machine指令，大致可以分
 在堆上构建/更新图节点的指令，如MkApp、PushInt、Update
 清理栈内无用地址的Pop指令
 表达控制流的Unwind指令
+
+
+
+deepseek
+Weak Head Normal Form (WHNF) 是 Haskell 等惰性（lazy）函数式编程语言中的一个重要概念，
+它表示一个表达式的部分求值形式，即表达式在最外层不再有可用的函数应用（redex, reducible expression），
+但内部可能仍然包含未求值的子表达式。
+

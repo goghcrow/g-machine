@@ -1,4 +1,8 @@
-package main
+package g_machine
+
+import (
+	. "github.com/goghcrow/g_machine/lang"
+)
 
 // 在编译超组合子时，需要维护一个环境，在编译过程中通过参数的名字找到参数在栈中的相对位置
 

@@ -1,38 +1,47 @@
-package main
+package lang
 
-type Pattern = Term
+// 用 Term 自己作为 pattern 来 匹配 Term
+// 所以 PVar | PSlot | PFun 要实现 Term
+
+type TermPattern = Term
 
 type (
-	PVar      struct{ Name }
-	PGuardVar struct {
+	PSlot struct {
 		Name
 		Guard func(Term) bool
 	}
-	PFun func(t Term, binds Binds) bool
+	PFun func(Term, Binds) bool // 通用匹配节点
 )
 
 type Binds = map[Name]Term
 
-func (PVar) isTerm()      {}
-func (PGuardVar) isTerm() {}
-func (PFun) isTerm()      {}
+func (PSlot) isTerm() {}
+func (PFun) isTerm()  {}
 
-func (p PVar) String() string      { return Fmt("PVar(%s)", p.Name) }
-func (p PGuardVar) String() string { return Fmt("PGuardVar(%s)", p.Name) }
-func (p PFun) String() string      { return Fmt("PFun") }
+func (p PSlot) String() string { return Fmt("PSlot(%s)", p.Name) }
+func (p PFun) String() string  { return Fmt("PFun") }
+
+// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 type patternT int
 
-const P patternT = iota
+const TP patternT = iota
 
-func (patternT) Var(name Name) PVar { return PVar{name} }
-func (patternT) Where(f PFun) PFun  { return f }
-func (v PVar) Where(f func(t Term) bool) PGuardVar {
-	return PGuardVar{v.Name, f}
+func (patternT) Slot(name Name, f ...func(Term) bool) PSlot {
+	switch len(f) {
+	case 0:
+		return PSlot{name, nil}
+	case 1:
+		return PSlot{name, f[0]}
+	default:
+		panic("invalid args")
+	}
 }
 
+// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
 type MatchAlts[R any] struct {
-	Ptn Pattern
+	Ptn TermPattern
 	Fn  func(Term, Binds) R
 }
 
@@ -46,15 +55,15 @@ func MatchTerms[R any](t Term, alts []MatchAlts[R]) R {
 	panic("illegal state")
 }
 
-func matchTerms(ts []Term, ptns []Pattern, binds Binds) bool {
-	if ptns == nil /*wildcard*/ {
+func matchTerms(ts []Term, ps []TermPattern, binds Binds) bool {
+	if ps == nil /*wildcard*/ {
 		return true
 	}
-	if len(ts) != len(ptns) {
+	if len(ts) != len(ps) {
 		return false
 	}
 	for i, t := range ts {
-		if !matchTerm(t, ptns[i], binds) {
+		if !matchTerm(t, ps[i], binds) {
 			return false
 		}
 	}
@@ -110,17 +119,14 @@ func matchAlts(alts, ptn []TAlt, binds Binds) bool {
 	return true
 }
 
-func matchTerm(t Term, ptn Pattern, binds Binds) bool {
+func matchTerm(t Term, ptn TermPattern, binds Binds) bool {
 	do := func(t Term, ptn Term) bool {
 		return matchTerm(t, ptn, binds)
 	}
 
 	switch p := ptn.(type) {
-	case PVar:
-		binds[p.Name] = t
-		return true
-	case PGuardVar:
-		if p.Guard(t) {
+	case PSlot:
+		if p.Guard == nil || p.Guard(t) {
 			binds[p.Name] = t
 			return true
 		}
@@ -180,9 +186,9 @@ func matchTerm(t Term, ptn Pattern, binds Binds) bool {
 		default:
 			return false
 		}
-	case TCase:
+	case TMatch:
 		switch p := ptn.(type) {
-		case TCase:
+		case TMatch:
 			return do(t.Expr, p.Expr) && matchAlts(t.Alts, p.Alts, binds)
 		default:
 			return false

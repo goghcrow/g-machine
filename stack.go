@@ -1,4 +1,8 @@
-package main
+package g_machine
+
+import (
+	. "github.com/goghcrow/g_machine/lang"
+)
 
 type Stack[T any] struct {
 	V []T
@@ -7,7 +11,6 @@ type Stack[T any] struct {
 func (s *Stack[T]) stackSz() int             { return len(s.V) }
 func (s *Stack[T]) empty() bool              { return len(s.V) == 0 }
 func (s *Stack[T]) stackNth(offset Offset) T { return s.V[len(s.V)-1-offset] }
-func (s *Stack[T]) peek() T                  { return s.V[len(s.V)-1] }
 func (s *Stack[T]) push(v T)                 { s.V = append(s.V, v) }
 func (s *Stack[T]) pushN(vs ...T)            { s.V = append(s.V, vs...) }
 func (s *Stack[T]) pop() (v T) {
